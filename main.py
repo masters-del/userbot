@@ -14,9 +14,7 @@ load_dotenv()
 
 client = TelegramClient('anon', int(os.getenv("API_ID")), os.getenv("API_HASH"))
 
-st = {
-    "sh": False, "tr": False, "auto": None, "rk": False
-}
+st = {"sh": False, "tr": False, "auto": None, "rk": False}
 
 trolls = [
     "Твой дед в канаве медь доедает, а ты тут пишешь?",
@@ -33,12 +31,12 @@ async def h(e):
         "── **Modes** ──\n"
         "`.шавка` | `.тролль` | `.реак` (🤡)\n\n"
         "── **Abuse** ──\n"
-        "`.все [txt]` — Tag all users ⚡\n"
+        "`.все [txt]` — Tag all⚡\n"
         "`.спам [n] [txt]` | `.дел [n]`\n\n"
         "── **Info/Stolen** ──\n"
         "`.докс` | `.тыбзи` (reply)\n\n"
         "── **Utils** ──\n"
-        "`.авто [txt]` | `.рассылка [id] [txt]`\n"
+        "`.авто [txt]` | `.автовыкл`\n"
         "`.пинг` | `.погода [city]`"
     )
     await e.edit(m)
@@ -47,17 +45,13 @@ async def h(e):
 async def tagall(e):
     msg = e.pattern_match.group(1) or "Внимание!"
     await e.delete()
-    members = await client.get_participants(e.chat_id)
-    
-    chunk_size = 5 # По 5 юзеров в сообщении, чтоб не словить спам-блок
-    for i in range(0, len(members), chunk_size):
-        if not st: break # Остановка если надо
-        out = f"**{msg}**\n\n"
-        for u in members[i:i+chunk_size]:
-            if u.bot: continue
-            out += f"[\u2063](tg://user?id={u.id})" 
-        await client.send_message(e.chat_id, out)
-        await asyncio.sleep(0.5)
+    async for u in client.iter_participants(e.chat_id):
+        if not st: break
+        if u.bot: continue
+        try:
+            await client.send_message(e.chat_id, f"**{msg}**\n[\u2063](tg://user?id={u.id})")
+            await asyncio.sleep(0.3)
+        except: pass
 
 @client.on(events.NewMessage(pattern=r'\.дел (\d+)', outgoing=True))
 async def d(e):
@@ -78,9 +72,8 @@ async def dx(e):
     r = await e.get_reply_message()
     if not r: return await e.edit("Reply needed")
     u = await client.get_entity(r.sender_id)
-    common = await client(functions.messages.GetCommonChatsRequest(user_id=r.sender_id, max_id=0, limit=100))
-    res = f"**DOCS:**\nID: `{u.id}`\nName: {u.first_name}\nUser: @{u.username}\nCommon Chats: {common.count}"
-    await e.edit(res)
+    c = await client(functions.messages.GetCommonChatsRequest(user_id=r.sender_id, max_id=0, limit=100))
+    await e.edit(f"**DOCS:**\nID: `{u.id}`\nName: {u.first_name}\nCommon: {c.count}")
 
 @client.on(events.NewMessage(pattern=r'\.реак', outgoing=True))
 async def rk(e):
@@ -90,7 +83,11 @@ async def rk(e):
 @client.on(events.NewMessage(incoming=True))
 async def react_h(e):
     if st["rk"] and not e.is_private:
-        try: await client(functions.messages.SendReactionRequest(peer=e.chat_id, msg_id=e.id, reaction=[types.ReactionEmoji(emoticon='🤡')]))
+        try:
+            await client(functions.messages.SendReactionRequest(
+                peer=e.chat_id, msg_id=e.id, 
+                reaction=[types.ReactionEmoji(emoticon='🤡')]
+            ))
         except: pass
 
 @client.on(events.NewMessage(pattern=r'\.спам (\d+) (.+)', outgoing=True))
@@ -103,17 +100,16 @@ async def s(e):
 
 @client.on(events.NewMessage(pattern=r'\.(шавка|тролль)', outgoing=True))
 async def md(e):
-    c = e.pattern_match.group(1)
-    if c == "шавка": st["sh"], st["tr"] = not st["sh"], False
+    cmd = e.pattern_match.group(1)
+    if cmd == "шавка": st["sh"], st["tr"] = not st["sh"], False
     else: st["tr"], st["sh"] = not st["tr"], False
-    await e.edit(f"**{c.upper()}**: {'ON' if st['sh'] or st['tr'] else 'OFF'}")
+    await e.edit(f"**{cmd.upper()}**: {'ON' if st['sh'] or st['tr'] else 'OFF'}")
 
 @client.on(events.NewMessage(outgoing=True))
 async def h_out(e):
     if e.text.startswith('.') or not (st["sh"] or st["tr"]): return
     if st["sh"]:
-        sfx = [" а-а.. д..а?~ 💦", " папочка.. ✨", " теку-у.. 🎀"]
-        await e.edit(f"{e.text}{random.choice(sfx)}")
+        await e.edit(f"{e.text}{random.choice([' а-а.. д..а?~ 💦', ' папочка.. ✨', ' м-м..~'])}")
     elif st["tr"]:
         await e.edit(f"{e.text}\n\n**[!]** {random.choice(trolls)}")
 
