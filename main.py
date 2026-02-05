@@ -1,88 +1,140 @@
-import os
-import asyncio
-from telethon import TelegramClient, events
-import requests
+import os, asyncio, random, requests
+from telethon import TelegramClient, events, functions, types
 from dotenv import load_dotenv
 
-# --- БЛОК АВТОМАТИЧЕСКОЙ НАСТРОЙКИ ---
-def initial_setup():
+def _setup():
     if not os.path.exists('.env'):
-        print("=== ПЕРВАЯ НАСТРОЙКА ЮЗЕРБОТА ===")
-        print("Файл .env не найден. Давай создадим его прямо сейчас.")
-        api_id = input("Введите ваш API ID (с сайта my.telegram.org): ").strip()
-        api_hash = input("Введите ваш API HASH: ").strip()
-        
+        aid = input("ID: ").strip()
+        ah = input("HASH: ").strip()
         with open('.env', 'w', encoding='utf-8') as f:
-            f.write(f"API_ID={api_id}\n")
-            f.write(f"API_HASH={api_hash}\n")
-        print("=== НАСТРОЙКА ЗАВЕРШЕНА! Файл .env создан. ===\n")
+            f.write(f"API_ID={aid}\nAPI_HASH={ah}\n")
 
-# Запускаем проверку перед основным кодом
-initial_setup()
+_setup()
 load_dotenv()
 
-# Подгружаем переменные
-API_ID = os.getenv("API_ID")
-API_HASH = os.getenv("API_HASH")
+client = TelegramClient('anon', int(os.getenv("API_ID")), os.getenv("API_HASH"))
 
-# Проверка, что ID — это число
-try:
-    API_ID = int(API_ID)
-except (TypeError, ValueError):
-    print("Ошибка: API_ID должен быть числом. Проверьте файл .env")
-    exit()
+st = {
+    "sh": False, "tr": False, "auto": None, "rk": False
+}
 
-client = TelegramClient('weather_userbot', API_ID, API_HASH)
-
-# --- ПЕРЕМЕННЫЕ РЕЖИМОВ ---
-pick_me_mode = False
-
-# --- КОМАНДЫ ---
+trolls = [
+    "Твой дед в канаве медь доедает, а ты тут пишешь?",
+    "Мать твою в ломбард сдал, за неё даже сотку не дали.",
+    "Батя твой ушел за хлебом и стал админом гей-клуба.",
+    "Я твою семейку в домино проиграл бомжам.",
+    "Твоя родословная — это ошибка пьяного зоолога."
+]
 
 @client.on(events.NewMessage(pattern=r'\.хелп', outgoing=True))
-async def help_command(event):
-    help_text = (
-        "**Меню команд юзербота:**\n\n"
-        "`.погода [город]` — Узнать погоду\n"
-        "`.пикми` — Включить/выключить режим Pick-me\n"
-        "`.пинг` — Проверить скорость\n"
-        "`.хелп` — Показать это меню"
+async def h(e):
+    m = (
+        "**[ Custom Userbot by Stupid ]**\n\n"
+        "── **Modes** ──\n"
+        "`.шавка` — Pick-me mode\n"
+        "`.тролль` — Toxic mode\n"
+        "`.реак` — Auto 🤡 reaction\n\n"
+        "── **Abuse** ──\n"
+        "`.спам [n] [txt]` — Flood\n"
+        "`.дел [n]` — Clear messages\n\n"
+        "── **Info/Stolen** ──\n"
+        "`.докс` (reply) — ID & Common chats\n"
+        "`.тыбзи` (reply) — Copy content\n\n"
+        "── **Utils** ──\n"
+        "`.авто [txt]` — Auto-reply\n"
+        "`.автовыкл` — Stop auto\n"
+        "`.рассылка [id] [txt]` — Send msg\n"
+        "`.пинг` | `.погода [city]`"
     )
-    await event.edit(help_text)
+    await e.edit(m)
 
-@client.on(events.NewMessage(pattern=r'\.пинг', outgoing=True))
-async def ping(event):
-    await event.edit("🚀 Понг! Бот работает как часы.")
+@client.on(events.NewMessage(pattern=r'\.дел (\d+)', outgoing=True))
+async def d(e):
+    n = int(e.pattern_match.group(1))
+    await e.delete()
+    async for m in client.iter_messages(e.chat_id, limit=n, from_user='me'):
+        await m.delete()
 
-@client.on(events.NewMessage(pattern=r'\.пикми', outgoing=True))
-async def toggle_pick_me(event):
-    global pick_me_mode
-    pick_me_mode = not pick_me_mode
-    status = "ВКЛЮЧЕН" if pick_me_mode else "ВЫКЛЮЧЕН"
-    await event.edit(f"💅 Режим Pick-me **{status}**")
+@client.on(events.NewMessage(pattern=r'\.тыбзи', outgoing=True))
+async def g(e):
+    r = await e.get_reply_message()
+    if r:
+        await e.delete()
+        await client.send_message('me', r)
+
+@client.on(events.NewMessage(pattern=r'\.докс', outgoing=True))
+async def dx(e):
+    r = await e.get_reply_message()
+    if not r: return await e.edit("Reply needed")
+    u = await client.get_entity(r.sender_id)
+    common = await client(functions.messages.GetCommonChatsRequest(user_id=r.sender_id, max_id=0, limit=100))
+    res = f"**DOCS:**\nID: `{u.id}`\nName: {u.first_name}\nUser: @{u.username}\nCommon Chats: {common.count}"
+    await e.edit(res)
+
+@client.on(events.NewMessage(pattern=r'\.реак', outgoing=True))
+async def rk(e):
+    st["rk"] = not st["rk"]
+    await e.edit(f"**Reactions**: {'ON' if st['rk'] else 'OFF'}")
+
+@client.on(events.NewMessage(incoming=True))
+async def react_h(e):
+    if st["rk"] and not e.is_private:
+        try: await client(functions.messages.SendReactionRequest(peer=e.chat_id, msg_id=e.id, reaction=[types.ReactionEmoji(emoticon='🤡')]))
+        except: pass
+
+@client.on(events.NewMessage(pattern=r'\.спам (\d+) (.+)', outgoing=True))
+async def s(e):
+    n, t = int(e.pattern_match.group(1)), e.pattern_match.group(2)
+    await e.delete()
+    for _ in range(n):
+        await e.respond(t)
+        await asyncio.sleep(0.08)
+
+@client.on(events.NewMessage(pattern=r'\.(шавка|тролль)', outgoing=True))
+async def md(e):
+    c = e.pattern_match.group(1)
+    if c == "шавка": st["sh"], st["tr"] = not st["sh"], False
+    else: st["tr"], st["sh"] = not st["tr"], False
+    await e.edit(f"**{c.upper()}**: {'ON' if st['sh'] or st['tr'] else 'OFF'}")
 
 @client.on(events.NewMessage(outgoing=True))
-async def pick_me_handler(event):
-    if pick_me_mode and not event.text.startswith('.'):
-        await event.edit(f"{event.text} а-а д..а?~")
+async def h_out(e):
+    if e.text.startswith('.') or not (st["sh"] or st["tr"]): return
+    if st["sh"]:
+        sfx = [" а-а.. д..а?~ 💦", " папочка.. ✨", " теку-у.. 🎀"]
+        await e.edit(f"{e.text}{random.choice(sfx)}")
+    elif st["tr"]:
+        await e.edit(f"{e.text}\n\n**[!]** {random.choice(trolls)}")
+
+@client.on(events.NewMessage(pattern=r'\.авто (.+)', outgoing=True))
+async def a_on(e):
+    st["auto"] = e.pattern_match.group(1)
+    await e.edit(f"**Auto**: {st['auto']}")
+
+@client.on(events.NewMessage(pattern=r'\.автовыкл', outgoing=True))
+async def a_off(e):
+    st["auto"] = None
+    await e.edit("**Auto OFF**")
+
+@client.on(events.NewMessage(incoming=True))
+async def h_in(e):
+    if st["auto"] and e.is_private: await e.reply(st["auto"])
+
+@client.on(events.NewMessage(pattern=r'\.пинг', outgoing=True))
+async def p(e): await e.edit("`PONG`")
 
 @client.on(events.NewMessage(pattern=r'\.погода (.+)', outgoing=True))
-async def get_weather(event):
-    city = event.pattern_match.group(1)
-    await event.edit(f"☁️ Ищу погоду для города: {city}...")
-    
-    try:
-        # Используем бесплатное API без ключа (wttr.in)
-        response = requests.get(f"https://wttr.in/{city}?format=3")
-        if response.status_code == 200:
-            await event.edit(f"📍 Погода: {response.text}")
-        else:
-            await event.edit("❌ Не удалось найти такой город.")
-    except Exception as e:
-        await event.edit(f"❌ Ошибка: {e}")
+async def w(e):
+    r = requests.get(f"https://wttr.in/{e.pattern_match.group(1)}?format=3")
+    await e.edit(r.text if r.status_code == 200 else "Err")
 
-# --- ЗАПУСК ---
-print("--- Юзербот запускается... ---")
-client.start()
-print("--- Юзербот запущен! Напиши .хелп в любом чате ---")
-client.run_until_disconnected()
+@client.on(events.NewMessage(pattern=r'\.рассылка (-?\d+) (.+)', outgoing=True))
+async def b(e):
+    try:
+        await client.send_message(int(e.pattern_match.group(1)), e.pattern_match.group(2))
+        await e.edit("OK")
+    except: await e.edit("FAIL")
+
+if __name__ == '__main__':
+    client.start()
+    client.run_until_disconnected()
