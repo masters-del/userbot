@@ -31,22 +31,33 @@ async def h(e):
     m = (
         "**[ Custom Userbot by Stupid ]**\n\n"
         "── **Modes** ──\n"
-        "`.шавка` — Pick-me mode\n"
-        "`.тролль` — Toxic mode\n"
-        "`.реак` — Auto 🤡 reaction\n\n"
+        "`.шавка` | `.тролль` | `.реак` (🤡)\n\n"
         "── **Abuse** ──\n"
-        "`.спам [n] [txt]` — Flood\n"
-        "`.дел [n]` — Clear messages\n\n"
+        "`.все [txt]` — Tag all users ⚡\n"
+        "`.спам [n] [txt]` | `.дел [n]`\n\n"
         "── **Info/Stolen** ──\n"
-        "`.докс` (reply) — ID & Common chats\n"
-        "`.тыбзи` (reply) — Copy content\n\n"
+        "`.докс` | `.тыбзи` (reply)\n\n"
         "── **Utils** ──\n"
-        "`.авто [txt]` — Auto-reply\n"
-        "`.автовыкл` — Stop auto\n"
-        "`.рассылка [id] [txt]` — Send msg\n"
+        "`.авто [txt]` | `.рассылка [id] [txt]`\n"
         "`.пинг` | `.погода [city]`"
     )
     await e.edit(m)
+
+@client.on(events.NewMessage(pattern=r'\.все ?(.*)', outgoing=True))
+async def tagall(e):
+    msg = e.pattern_match.group(1) or "Внимание!"
+    await e.delete()
+    members = await client.get_participants(e.chat_id)
+    
+    chunk_size = 5 # По 5 юзеров в сообщении, чтоб не словить спам-блок
+    for i in range(0, len(members), chunk_size):
+        if not st: break # Остановка если надо
+        out = f"**{msg}**\n\n"
+        for u in members[i:i+chunk_size]:
+            if u.bot: continue
+            out += f"[\u2063](tg://user?id={u.id})" 
+        await client.send_message(e.chat_id, out)
+        await asyncio.sleep(0.5)
 
 @client.on(events.NewMessage(pattern=r'\.дел (\d+)', outgoing=True))
 async def d(e):
