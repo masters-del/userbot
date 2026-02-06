@@ -3,41 +3,39 @@ from telethon import TelegramClient, events, functions, types
 from dotenv import load_dotenv
 from gtts import gTTS
 
-# ==========================================
-#              CONFIGURATION
-# ==========================================
+# ========================================================
+# [ ⚙️ КОНФИГУРАЦИЯ И НАСТРОЙКА ]
+# ========================================================
 def setup_env():
+    """Создание файла .env при первом запуске"""
     if not os.path.exists('.env'):
-        print("🚀 First run! Setting up credentials...")
-        api_id = input("Enter API_ID: ").strip()
-        api_hash = input("Enter API_HASH: ").strip()
+        api_id = input("Введите API_ID: ").strip()
+        api_hash = input("Введите API_HASH: ").strip()
         with open('.env', 'w', encoding='utf-8') as f:
             f.write(f"API_ID={api_id}\nAPI_HASH={api_hash}\n")
 
 setup_env()
 load_dotenv()
 
+# Инициализация клиента Telegram
 client = TelegramClient('stupid_session', int(os.getenv("API_ID")), os.getenv("API_HASH"))
 MOD_PATH = "modules"
 if not os.path.exists(MOD_PATH): os.mkdir(MOD_PATH)
 
+# Переменные состояния бота
 class State:
-    shavka = False
-    troll = False
-    reactions = False
+    shavka = False      # Режим "Шавка"
+    troll = False       # Режим "Тролль"
+    reactions = False   # Авто-реакции клоуна
 
-# ==========================================
-#                DATA PACKS
-# ==========================================
+# ========================================================
+# [ 📝 БАЗА ДАННЫХ ФРАЗ ]
+# ========================================================
 trolls = [
     "Твой дед в канаве медь доедает, а ты тут пишешь?",
     "Мать твою в ломбард сдал, за неё даже сотку не дали.",
     "Батя твой ушел за хлебом и стал админом гей-клуба.",
-    "Я твою семейку в домино проиграл бомжам.",
-    "Твоя родословная — это ошибка пьяного зоолога.",
-    "Твой максимум — это чистить ботинки моему юзерботу.",
-    "В твоей голове настолько пусто, что слышно эхо моих сообщений.",
-    "Ты настолько жалок, что даже спам-фильтр тебя игнорирует."
+    "Твоя родословная — это ошибка пьяного зоолога."
 ]
 
 shavka_suffixes = [
@@ -47,138 +45,146 @@ shavka_suffixes = [
     " ..т-теку.. только не бросай меня.. 🎀",
     " ..г..отова на всё ради тебя..~",
     " *дрожу* ..с..лушаюсь.. ✨",
-    " (｡◕‿◕｡) ..я хорошая девочка?~",
-    " ..м-м.. как скажешь, любимый.. ✨",
-    " ..п..ожалуйста, не злись на меня.. 🥺",
-    " ..я.. я только твоя..~ 🎀",
-    " *тихонько скулю* ..х..очу ещё.. ✨",
-    " ..т..ы такой сильный..~ 💦",
-    " ..сделаю всё, что попросишь.. ✨",
-    " ..а-ах.. папочка, ты лучший..~ 🎀",
-    " *покорно жду* ..м..не так плохо без тебя.. ✨",
-    " (◡‿◡✿) ..твой маленький секрет..~",
-    " ..н..аказывай меня чаще.. 💦",
-    " ..б..уду послушной, обещаю.. ✨",
-    " ..м-м-м.. так приятно..~ 🎀",
-    " *лижу руку* ..м..ожно мне ещё внимания?.. ✨",
-    " ..я.. я вся горю..~ 💦",
-    " (๑•́ ₃ •̀๑) ..не игнорь меня, хозяин.. 🎀",
-    " ..у..же теку от твоего голоса..~ 💦",
-    " *прижалась к ноге* ..н..е уходи.. ✨",
-    " ..х..озяин, я соскучилась.. 🐾",
-    " ..т..олько не бей, я буду хорошей.. 🥺",
-    " ..а-а.. я вся твоя, делай что хочешь.. 💦"
+    " (｡◕‿◕｡) ..я хорошая девочка?~"
 ]
 
-# ==========================================
-#           SYSTEM & LOGGING
-# ==========================================
+# ========================================================
+# [ 🛠 СИСТЕМА ЛОГИРОВАНИЯ ОШИБОК ]
+# ========================================================
 async def send_log(error_text, cmd_name="SYSTEM"):
+    """Отправка отчета об ошибке в 'Избранное'"""
     try:
-        log_msg = f"❌ **[ ERROR LOG ]**\n**Cmd:** `{cmd_name}`\n`{error_text[-3000:]}`"
-        await client.send_message("me", log_msg)
+        await client.send_message("me", f"❌ **[ ОШИБКА ]**\n**Команда:** `{cmd_name}`\n`{error_text[-3000:]}`")
     except: pass
 
 def error_handler(func):
+    """Декоратор для перехвата ошибок в командах"""
     async def wrapper(e):
         try: await func(e)
         except Exception: await send_log(traceback.format_exc(), func.__name__)
     return wrapper
 
-# ==========================================
-#                CORE COMMANDS
-# ==========================================
+# ========================================================
+# [ 📜 ОСНОВНЫЕ КОМАНДЫ ]
+# ========================================================
 
 @client.on(events.NewMessage(pattern=r'\.хелп', outgoing=True))
 @error_handler
 async def cmd_help(e):
+    """Список всех команд"""
     m = (
-        "**[ 🧬 Stupid Userbot v5.9 ]**\n\n"
-        "── **CYBER & FUN** ──\n"
-        "`.hack` — Взлом (reply) | `.кубик [1-6]`\n"
-        "`.тайп [txt]` | `.инверт`\n\n"
-        "── **LOVE & RP** ──\n"
-        "`.heart` | `.love [txt]` | `.люблю` (reply)\n"
-        "`.лизь` | `.кусь` | `.наколени` | `.лапу`\n\n"
-        "── **MODES** ──\n"
-        "`.шавка` (ULTRA PACK) | `.тролль` | `.реак` (🤡)\n\n"
-        "── **TOOLS** ──\n"
-        "`.все` | `.спам [n] [txt]` | `.дел [n]`\n"
-        "`.гс [txt]` | `.вфайл` | `.инфо` | `.пинг`\n\n"
-        "── **SYSTEM** ──\n"
-        "`.load` — Модуль .py"
+        "**[ 🧬 Stupid Userbot v6.0 ]**\n\n"
+        "── **КИБЕР-ФАН** ──\n"
+        "`.взлом` — Взлом юзера (reply)\n"
+        "`.кость [1-6]` — Чит на кубик\n"
+        "`.печать [текст]` — Эффект печати\n"
+        "`.реверс` — Текст задом наперед\n\n"
+        "── **ЛЮБОВЬ & РП** ──\n"
+        "`.сердце` — Анимация ❤️\n"
+        "`.любовь [текст]` — Признание\n"
+        "`.люблю` | `.лизь` | `.кусь` | `.наколени`\n\n"
+        "── **РЕЖИМЫ** ──\n"
+        "`.шавка` | `.тролль` | `.реак` (🤡)\n\n"
+        "── **ИНСТРУМЕНТЫ** ──\n"
+        "`.все` — Тэгнуть всех\n"
+        "`.спам [n] [текст]` — Флуд\n"
+        "`.дел [n]` — Удалить свои сообщения\n"
+        "`.гс [текст]` — Озвучка текста\n"
+        "`.файл` — Стикер в файл (reply)\n"
+        "`.пинг` — Скорость бота"
     )
     await e.edit(m)
 
-# --- MEDIA & FUN ---
-@client.on(events.NewMessage(pattern=r'\.hack', outgoing=True))
+# --- БЛОК: КИБЕР-РАЗВЛЕЧЕНИЯ ---
+
+@client.on(events.NewMessage(pattern=r'\.взлом', outgoing=True))
 @error_handler
 async def cmd_hack(e):
+    """Имитация хакерской атаки"""
     r = await e.get_reply_message()
-    target = f"@{r.sender.username}" if r and r.sender.username else "User"
-    steps = ["🔍 Searching...", "📡 Connecting...", "🔑 BruteForce...", "🔓 Access Granted!", "📂 Downloading...", "✅ Done."]
+    t = f"@{r.sender.username}" if r and r.sender.username else "Пользователя"
+    steps = ["🔍 Поиск уязвимостей...", "📡 Подключение к Proxy...", "🔑 Брутфорс пароля...", "🔓 Доступ получен!", "📂 Скачивание архива...", "✅ Готово."]
     for s in steps:
-        await e.edit(f"**[ATTACK]** `{s}`"); await asyncio.sleep(0.7)
-    await e.edit(f"**Target {target} compromised.**")
+        await e.edit(f"**[ВЗЛОМ]** `{s}`"); await asyncio.sleep(0.7)
+    await e.edit(f"**Объект {t} успешно скомпрометирован.**")
 
-@client.on(events.NewMessage(pattern=r'\.кубик (\d+)', outgoing=True))
+@client.on(events.NewMessage(pattern=r'\.кость (\d+)', outgoing=True))
 @error_handler
 async def cmd_dice(e):
+    """Чит на игровые кубики (dice)"""
     v = int(e.pattern_match.group(1))
-    if not (1 <= v <= 6): return
+    if not (1 <= v <= 6): return await e.edit("Введите число от 1 до 6!")
     await e.delete()
     while True:
-        m = await client.send_message(e.chat_id, file=types.InputMediaDice(emoji="🎲"))
-        if m.media.value == v: break
-        await m.delete()
+        # Отправка кубика через правильный метод API
+        res = await client(functions.messages.SendDiceRequest(peer=e.chat_id, emoji="🎲"))
+        if res.updates[0].message.media.value == v: break
+        await client.delete_messages(e.chat_id, [res.updates[0].message.id])
 
-@client.on(events.NewMessage(pattern=r'\.heart', outgoing=True))
+# --- БЛОК: ЛЮБОВЬ И РОМАНТИКА ---
+
+@client.on(events.NewMessage(pattern=r'\.сердце', outgoing=True))
 @error_handler
 async def cmd_heart(e):
+    """Анимация сердечек"""
     for s in ["❤️", "❤️🧡", "❤️🧡💛", "❤️🧡💛💚", "💝"]:
         await e.edit(s); await asyncio.sleep(0.3)
 
-@client.on(events.NewMessage(pattern=r'\.(лизь|кусь|наколени|люблю|лапу|скулить)', outgoing=True))
+@client.on(events.NewMessage(pattern=r'\.любовь ?(.*)', outgoing=True))
+@error_handler
+async def cmd_love(e):
+    """Красивое признание в любви"""
+    t = e.pattern_match.group(1) or "тебя"
+    await e.edit(f"**Я очень сильно люблю {t} ❤️✨**")
+
+@client.on(events.NewMessage(pattern=r'\.(лизь|кусь|наколени|люблю)', outgoing=True))
 @error_handler
 async def cmd_rp(e):
+    """Ролевые команды (RP)"""
     c = e.pattern_match.group(1); r = await e.get_reply_message()
     t = f"[@{r.sender.username}](tg://user?id={r.sender_id})" if r and r.sender.username else "хозяина"
     rps = {
         "лизь": f"👅 | **Аккуратно лизнула** {t}..~",
-        "кусь": f"🦷 | **Слегка прикусила** {t} за ушко..",
+        "кусь": f"🦷 | **Прикусила** {t} за ушко..",
         "наколени": f"🧎‍♀️ | **Встала на колени** перед {t}..",
-        "люблю": f"💖 | **Зацеловала** {t} до покраснения..",
-        "лапу": f"🐾 | **Протянула лапку** {t}..",
-        "скулить": f"🥺 | **Тихо скулит**, глядя на {t}.."
+        "люблю": f"💖 | **Зацеловала** {t}.."
     }
     await e.edit(rps[c])
 
-# --- MODES & LOGIC ---
+# --- БЛОК: РЕЖИМЫ И АВТОМАТИЗАЦИЯ ---
+
 @client.on(events.NewMessage(pattern=r'\.(шавка|тролль|реак)', outgoing=True))
 @error_handler
 async def cmd_toggle(e):
+    """Включение/выключение режимов"""
     c = e.pattern_match.group(1)
     if c == "шавка": State.shavka, State.troll = not State.shavka, False; s = State.shavka
     elif c == "тролль": State.troll, State.shavka = not State.troll, False; s = State.troll
     else: State.reactions = not State.reactions; s = State.reactions
-    await e.edit(f"**{c.upper()}**: {'✅ ON' if s else '❌ OFF'}")
+    await e.edit(f"**{c.upper()}**: {'✅ ВКЛ' if s else '❌ ВЫКЛ'}")
 
 @client.on(events.NewMessage(outgoing=True))
 async def handle_modes(e):
+    """Логика работы активных режимов"""
     if e.text.startswith('.') or not (State.shavka or State.troll): return
-    if State.shavka: await e.edit(f"{e.text}{random.choice(shavka_suffixes)}")
-    elif State.troll: await e.edit(f"{e.text}\n\n**[!]** {random.choice(trolls)}")
+    if State.shavka: 
+        await e.edit(f"{e.text}{random.choice(shavka_suffixes)}")
+    elif State.troll: 
+        await e.edit(f"{e.text}\n\n**[!]** {random.choice(trolls)}")
 
 @client.on(events.NewMessage(incoming=True))
 async def handle_auto_react(e):
+    """Автоматическая реакция 'Клоун' на входящие"""
     if State.reactions and not e.is_private:
         try: await client(functions.messages.SendReactionRequest(peer=e.chat_id, msg_id=e.id, reaction=[types.ReactionEmoji(emoticon='🤡')]))
         except: pass
 
-# --- UTILS ---
+# --- БЛОК: ПОЛЕЗНЫЕ ИНСТРУМЕНТЫ ---
+
 @client.on(events.NewMessage(pattern=r'\.гс (.+)', outgoing=True))
 @error_handler
 async def cmd_tts(e):
+    """Превращение текста в голосовое сообщение"""
     t = e.pattern_match.group(1); tts = gTTS(t, lang='ru'); out = io.BytesIO()
     tts.write_to_fp(out); out.name = "v.mp3"; out.seek(0)
     await e.delete(); await client.send_file(e.chat_id, out, voice=True)
@@ -186,38 +192,35 @@ async def cmd_tts(e):
 @client.on(events.NewMessage(pattern=r'\.все ?(.*)', outgoing=True))
 @error_handler
 async def cmd_tagall(e):
-    txt = e.pattern_match.group(1) or "Слышь!"
+    """Тэг всех участников чата"""
+    txt = e.pattern_match.group(1) or "Слышь, внимание!"
     await e.delete()
     async for u in client.iter_participants(e.chat_id):
         if u.bot: continue
-        try:
+        try: 
             await client.send_message(e.chat_id, f"**{txt}**\n[\u2063](tg://user?id={u.id})")
             await asyncio.sleep(0.4)
         except: break
 
+@client.on(events.NewMessage(pattern=r'\.пинг', outgoing=True))
+async def cmd_ping(e): 
+    """Проверка скорости"""
+    await e.edit("`БОТ ЛЕТИТ: 0.01ms` ⚡")
+
 @client.on(events.NewMessage(pattern=r'\.дел (\d+)', outgoing=True))
 @error_handler
 async def cmd_del(e):
+    """Удаление сообщений"""
     n = int(e.pattern_match.group(1)); await e.delete()
     async for m in client.iter_messages(e.chat_id, limit=n, from_user='me'): await m.delete()
 
-@client.on(events.NewMessage(pattern=r'\.load', outgoing=True))
-@error_handler
-async def cmd_load(e):
-    r = await e.get_reply_message()
-    if r and r.file:
-        await r.download_media(MOD_PATH)
-        await e.edit("📦 Модуль залит. Рестарт..."); os.execl(sys.executable, sys.executable, *sys.argv)
-
-@client.on(events.NewMessage(pattern=r'\.пинг', outgoing=True))
-async def cmd_ping(e): await e.edit("`PING: 0.01ms` ⚡")
-
-# ==========================================
-#                   BOOT
-# ==========================================
+# ========================================================
+# [ 🚀 ЗАПУСК БОТА ]
+# ========================================================
 async def main():
     await client.start()
-    await client.send_message("me", "✅ **Stupid Userbot v5.9 Started!**\nЛогирование активно.")
+    await client.send_message("me", "✅ **Бот v6.0 успешно запущен!**\nВсе функции работают в штатном режиме.")
+    print("Юзербот запущен! Проверь 'Избранное' в Telegram.")
     await client.run_until_disconnected()
 
 if __name__ == '__main__':
