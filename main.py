@@ -1,11 +1,23 @@
-import os, asyncio, random, requests, sys, io, traceback
-from telethon import TelegramClient, events, functions, types
+import os, asyncio, random, sys, io
+from telethon import TelegramClient, events, functions, types, errors
+from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.errors import UserAlreadyParticipantError, FloodWaitError
 from dotenv import load_dotenv
 from gtts import gTTS
+import google.generativeai as genai
+from colorama import init, Fore, Style
+from concurrent.futures import ThreadPoolExecutor
 
-# ========================================================
-# [ ⚙️ КОНФИГУРАЦИЯ ]
-# ========================================================
+init(autoreset=True)
+
+# Очередь задач и потоки для ИИ
+task_queue = asyncio.Queue()
+_executor = ThreadPoolExecutor(max_workers=5)
+me = None
+
+# Твой ключ Gemini (вшит)
+BUILT_IN_AI_KEY = "AIzaSyD2MnB0xP7gslNIeHalUEW9DAm1xNcHKKc"
+
 def setup_env():
     if not os.path.exists('.env'):
         api_id = input("Введите API_ID: ").strip()
@@ -16,172 +28,139 @@ def setup_env():
 setup_env()
 load_dotenv()
 
-client = TelegramClient('stupid_session', int(os.getenv("API_ID")), os.getenv("API_HASH"))
+api_id, api_hash = os.getenv("API_ID"), os.getenv("API_HASH")
+client = TelegramClient('stupid_session', int(api_id), api_hash)
+genai.configure(api_key=BUILT_IN_AI_KEY)
+ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
 class State:
     shavka = False
-    troll = False
-    reactions = False
+    ai_help = False
     afk = False
     afk_reason = ""
 
-# ========================================================
-# [ 📝 БАЗА ДАННЫХ ]
-# ========================================================
-trolls = [
-    "Дед в канаве медь доедает, а ты тут пишешь?",
-    "Мать твою в ломбард сдал, за неё даже сотку не дали.",
-    "Батя твой админ гей-клуба.",
-    "Твоя родословная — это ошибка пьяного зоолога.",
-    "Ты как демо-версия человека: вроде похоже, но функций ноль."
-]
+# --- SAFE SEND ---
+async def safe_send(entity, message):
+    for _ in range(5): 
+        try:
+            await client.send_message(entity, message)
+            await asyncio.sleep(random.uniform(1.5, 3.5))
+            return True
+        except FloodWaitError as f:
+            await asyncio.sleep(f.seconds + 2)
+        except Exception: return False
+    return False
 
-shavka_suffixes = [
-    " (⁄ ⁄•⁄ω⁄•⁄ ⁄) ..да, хозяин..~", " ..а-а.. м..ожно ещё?~ 💦",
-    " *дрожу* ..с..лушаюсь.. ✨", " (｡◕‿◕｡) ..я хорошая девочка?~",
-    " ..т-теку.. только не бросай меня.. 🎀", " ..х..очу наказания..~ ⛓️",
-    " *тихо скулю* ..б..ольше внимания..~ ❤️", " (⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄) ..в..аша навсегда..~",
-    " ..о..шейник такой холодный..~ ✨", " *прикусила губку* ..м..ожно ещё боли?~ 😈",
-    " ..г..отова на всё.. только прикажите.. 💍", " ..м..яу.. погладьте меня..~ 🐱",
-    " *встала на четвереньки* ..ж..ду приказов.. ⛓️", " ..м..ожно лизнуть сапог?~ 👅"
-]
-
-# ========================================================
-# [ 🛠 СЛУЖЕБНЫЕ ФУНКЦИИ ]
-# ========================================================
-async def send_log(error_text, cmd_name="SYSTEM"):
-    try: await client.send_message("me", f"❌ **[ ОШИБКА ]**\n**Команда:** `{cmd_name}`\n`{error_text[-3000:]}`")
-    except: pass
-
-def error_handler(func):
-    async def wrapper(e):
-        try: await func(e)
-        except Exception: await send_log(traceback.format_exc(), func.__name__)
-    return wrapper
-
-# ========================================================
-# [ 📜 КОМАНДЫ ]
-# ========================================================
-
-@client.on(events.NewMessage(pattern=r'\.хелп', outgoing=True))
-@error_handler
-async def cmd_help(e):
-    m = (
-        "**[ 🧬 Stupid Userbot v6.2 ]**\n\n"
-        "── **АВТООТВЕТЧИК** ──\n"
-        "`.авто [текст]` | `.автостоп`\n\n"
-        "── **ЛЮБОВЬ & РП** ──\n"
-        "`.сердце` | `.любовь` | `.люблю` | `.лизь` | `.кусь`\n\n"
-        "── **ЭФФЕКТЫ** ──\n"
-        "`.печать [текст]` | `.реверс` | `.взлом` | `.кость [1-6]`\n\n"
-        "── **РЕЖИМЫ** ──\n"
-        "`.шавка` | `.тролль` | `.реак` (🤡)\n\n"
-        "── **ИНСТРУМЕНТЫ** ──\n"
-        "`.все` | `.дел [n]` | `.гс [текст]` | `.пинг`"
-    )
-    await e.edit(m)
-
-# --- АВТООТВЕТЧИК ---
-@client.on(events.NewMessage(pattern=r'\.авто (.+)', outgoing=True))
-@error_handler
-async def cmd_afk_on(e):
-    State.afk, State.afk_reason = True, e.pattern_match.group(1)
-    await e.edit(f"✅ **Автоответчик ВКЛ!**\nТекст: `{State.afk_reason}`")
-
-@client.on(events.NewMessage(pattern=r'\.автостоп', outgoing=True))
-@error_handler
-async def cmd_afk_off(e):
-    State.afk = False
-    await e.edit("❌ **Автоответчик ВЫКЛ.**")
-
-@client.on(events.NewMessage(incoming=True))
-async def handle_afk_logic(e):
-    if State.afk and e.is_private:
-        me = await client.get_me()
-        if e.sender_id == me.id: return
-        sender = await e.get_sender()
-        if sender and getattr(sender, 'bot', False): return
-        await asyncio.sleep(1); await e.reply(f"**[🤖 Автоответчик]**\n{State.afk_reason}")
-
-# --- ЛЮБОВЬ И РП (ВОЗВРАЩЕНО!) ---
-@client.on(events.NewMessage(pattern=r'\.сердце', outgoing=True))
-@error_handler
-async def cmd_heart(e):
-    for s in ["❤️", "❤️🧡", "❤️🧡💛", "❤️🧡💛💚", "💙", "💝"]:
-        await e.edit(s); await asyncio.sleep(0.3)
-
-@client.on(events.NewMessage(pattern=r'\.любовь ?(.*)', outgoing=True))
-@error_handler
-async def cmd_love(e):
-    t = e.pattern_match.group(1) or "тебя"
-    await e.edit(f"**Я тебя люблю, {t} ❤️✨**")
-
-@client.on(events.NewMessage(pattern=r'\.(лизь|кусь|наколени|люблю)', outgoing=True))
-@error_handler
-async def cmd_rp(e):
-    c = e.pattern_match.group(1); r = await e.get_reply_message()
-    t = f"[@{r.sender.username}](tg://user?id={r.sender_id})" if r and r.sender and r.sender.username else "хозяина"
-    rps = {"лизь": f"👅 | **Лизнула** {t}..", "кусь": f"🦷 | **Кусь** {t}..", "наколени": f"🧎‍♀️ | **На колени перед** {t}..", "люблю": f"💖 | **Люблю** {t}.."}
-    await e.edit(rps[c])
-
-# --- ЭФФЕКТЫ ---
-@client.on(events.NewMessage(pattern=r'\.печать (.+)', outgoing=True))
-@error_handler
-async def cmd_typewriter(e):
-    text, curr = e.pattern_match.group(1), ""
-    for char in text:
-        curr += char
-        try: await e.edit(f"**{curr}▒**"); await asyncio.sleep(0.15)
-        except: pass
-    await e.edit(f"**{curr}**")
-
-@client.on(events.NewMessage(pattern=r'\.кость (\d+)', outgoing=True))
-@error_handler
-async def cmd_dice(e):
-    v = int(e.pattern_match.group(1))
-    await e.delete()
+# --- WORKER ---
+async def worker():
     while True:
-        res = await client(functions.messages.SendDiceRequest(peer=e.chat_id, emoji="🎲"))
-        if res.updates[0].message.media.value == v: break
-        await client.delete_messages(e.chat_id, [res.updates[0].message.id])
+        task = await task_queue.get()
+        try: await task()
+        except Exception: pass
+        await asyncio.sleep(random.uniform(2, 5))
+        task_queue.task_done()
 
-# --- РЕЖИМЫ (ШАВКА/ТРОЛЛЬ) ---
-@client.on(events.NewMessage(pattern=r'\.(шавка|тролль|реак)', outgoing=True))
-@error_handler
-async def cmd_toggle(e):
-    c = e.pattern_match.group(1)
-    if c == "шавка": State.shavka, State.troll = not State.shavka, False; s = State.shavka
-    elif c == "тролль": State.troll, State.shavka = not State.troll, False; s = State.troll
-    else: State.reactions = not State.reactions; s = State.reactions
-    await e.edit(f"**{c.upper()}**: {'✅' if s else '❌'}")
+# ========================================================
+# [ ❤️ ЛЮБОВНЫЙ БЛОК ]
+# ========================================================
 
-@client.on(events.NewMessage(outgoing=True))
-async def handle_modes(e):
-    if not e.text or e.text.startswith('.'): return
-    if State.shavka: await e.edit(f"{e.text}{random.choice(shavka_suffixes)}")
-    elif State.troll: await e.edit(f"{e.text}\n\n**[!]** {random.choice(trolls)}")
+@client.on(events.NewMessage(pattern=r'\.сердце', outgoing=True))
+async def cmd_heart_anim(e):
+    # Анимация пульсирующего сердца
+    hearts = ["❤️", "💖", "💗", "💓", "💝", "💞", "💟", "❤️"]
+    for h in hearts:
+        await e.edit(h)
+        await asyncio.sleep(0.5)
+    await e.edit("❤️ **Люблю тебя до луны и обратно!** ❤️")
 
-# --- ИНСТРУМЕНТЫ ---
-@client.on(events.NewMessage(pattern=r'\.гс (.+)', outgoing=True))
-@error_handler
-async def cmd_tts(e):
-    t = e.pattern_match.group(1); tts = gTTS(t, lang='ru'); out = io.BytesIO()
-    tts.write_to_fp(out); out.name = "v.mp3"; out.seek(0)
-    await e.delete(); await client.send_file(e.chat_id, out, voice=True)
+@client.on(events.NewMessage(pattern=r'\.love', outgoing=True))
+async def cmd_love_text(e):
+    # Красивая анимация текста
+    msg = "Я тебя люблю"
+    out = ""
+    for char in msg:
+        out += char
+        await e.edit(f"✨ {out} ✨")
+        await asyncio.sleep(0.3)
+    await e.edit(f"❤️ **{msg}** ❤️")
+
+@client.on(events.NewMessage(pattern=r'\.признание', outgoing=True))
+async def cmd_confess(e):
+    # ИИ пишет глубокое и красивое признание
+    await e.edit("💌 **Пишу самое красивое признание...**")
+    try:
+        loop = asyncio.get_event_loop()
+        res = await loop.run_in_executor(_executor, lambda: ai_model.generate_content("Напиши очень трогательное, глубокое и короткое признание в любви для девушки. Используй метафоры про космос или океан. Без пошлости."))
+        if res and res.text:
+            await e.edit(f"📜 **Послание для тебя:**\n\n{res.text.strip()}\n\n❤️✨")
+    except:
+        await e.edit("❤️ Ты — мой весь мир.")
+
+# ========================================================
+# [ 📜 ОСТАЛЬНЫЕ КОМАНДЫ (v9.2 БАЗА) ]
+# ========================================================
+
+@client.on(events.NewMessage(pattern=r'\.ai (.+)', outgoing=True))
+async def cmd_ai(e):
+    await e.edit("🤔 **ИИ анализирует...**")
+    try:
+        loop = asyncio.get_event_loop()
+        res = await loop.run_in_executor(_executor, lambda: ai_model.generate_content(e.pattern_match.group(1)))
+        if res and res.text: await e.edit(f"🤖 **AI:**\n\n{res.text.strip()[:4000]}")
+    except: await e.edit("❌ Ошибка.")
+
+@client.on(events.NewMessage(pattern=r'\.рейд (\d+) (.+)', outgoing=True))
+async def cmd_raid(e):
+    count, text = min(int(e.pattern_match.group(1)), 30), e.pattern_match.group(2)
+    await e.delete()
+    async def raid_task():
+        for _ in range(count): await safe_send(e.chat_id, text)
+    await task_queue.put(raid_task)
+
+@client.on(events.NewMessage(pattern=r'\.рассылка (.+)', outgoing=True))
+async def cmd_broadcast(e):
+    msg = e.pattern_match.group(1)
+    try:
+        async with client.conversation("me", timeout=60) as conv:
+            await conv.send_message("📝 **Ссылки:**")
+            r = await conv.get_response()
+            links = [l.strip() for l in r.text.split('\n') if l.strip()]
+    except: return await e.edit("❌ Отмена.")
+    await e.edit("🚀 **В очереди...**")
+    async def broadcast_task():
+        for link in links:
+            try:
+                target = link.replace("https://t.me/", "").replace("@", "").split('/')[0]
+                try: await client(JoinChannelRequest(target))
+                except UserAlreadyParticipantError: pass
+                except: continue
+                await asyncio.sleep(random.uniform(15, 30))
+                await safe_send(target, msg)
+            except: continue
+    await task_queue.put(broadcast_task)
 
 @client.on(events.NewMessage(pattern=r'\.пинг', outgoing=True))
-async def cmd_ping(e): await e.edit("`БОТ ЛЕТИТ: 0.01ms` ⚡")
+async def cmd_p(e): await e.edit("`v9.3 LOVELY ACTIVE ❤️`")
 
-@client.on(events.NewMessage(pattern=r'\.дел (\d+)', outgoing=True))
-@error_handler
-async def cmd_del(e):
-    n = int(e.pattern_match.group(1)); await e.delete()
-    async for m in client.iter_messages(e.chat_id, limit=n, from_user='me'): await m.delete()
+@client.on(events.NewMessage(pattern=r'\.шавка', outgoing=True))
+async def cmd_sh(e):
+    State.shavka = not State.shavka
+    await e.edit(f"🐶 Шавка: {'✅' if State.shavka else '❌'}")
+
+@client.on(events.NewMessage(outgoing=True))
+async def sh_l(e):
+    if State.shavka and e.text and not e.text.startswith('.'):
+        await e.edit(f"{e.text} ~ня", parse_mode=None)
 
 async def main():
-    await client.start()
-    await client.send_message("me", "✅ **Бот v6.2 FINAL запущен!**\nЛюбовь, Шавка и Автоответчик в строю.")
-    await client.run_until_disconnected()
+    global me
+    try:
+        await client.start()
+        me = await client.get_me()
+        asyncio.create_task(worker())
+        print(Fore.MAGENTA + f"[+] v9.3 Lovely запущен! Любимая, я в сети.")
+        await client.run_until_disconnected()
+    except Exception as ex: print(ex)
 
 if __name__ == '__main__':
     client.loop.run_until_complete(main())

@@ -1,3 +1,7 @@
 telethon
-requests
 python-dotenv
+google-generativeai
+gtts
+colorama
+requests
+pillow

@@ -1,4 +1,4 @@
+.env
 *.session
 *.session-journal
-.env
 __pycache__/
