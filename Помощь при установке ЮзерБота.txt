@@ -1,0 +1,150 @@
+Справочник установки для бота на Python + Telethon + AI
+==============================================================
+
+1️ macOS
+--------------------------------------------------------------
+1. Установка Git
+--------------------------------------------------------------
+# Проверяем, установлен ли Git
+git --version
+
+# Если нет, ставим через Homebrew
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew install git
+
+Возможные ошибки:
+─────────────────────────────────────────────
+brew: command not found      → Установить Homebrew по инструкции выше
+Permission denied            → Добавить sudo перед командой
+─────────────────────────────────────────────
+
+2. Установка Python
+--------------------------------------------------------------
+# Проверяем версию
+python3 --version
+
+# Если нет или старая версия
+brew install python
+
+Для Telethon и gTTS нужен Python ≥ 3.9
+
+# Проверяем pip
+pip3 --version
+
+3. Установка зависимостей
+--------------------------------------------------------------
+# Создаём виртуальное окружение (рекомендуется)
+python3 -m venv venv
+source venv/bin/activate
+
+# Установка библиотек
+pip install telethon python-dotenv gtts google-generativeai colorama
+
+Возможные ошибки:
+─────────────────────────────────────────────
+ModuleNotFoundError          → Проверить активное виртуальное окружение
+Ошибка сборки gTTS           → pip install --upgrade pip setuptools wheel
+─────────────────────────────────────────────
+
+4. Запуск бота
+--------------------------------------------------------------
+python bot.py
+Permission denied             → chmod +x bot.py
+Ошибка Telethon               → pip install --upgrade telethon
+
+==============================================================
+
+2️ Windows
+--------------------------------------------------------------
+1. Установка Git
+--------------------------------------------------------------
+Скачиваем Git для Windows: https://git-scm.com/download/win
+При установке:
+  - Use Git from the command line and also from 3rd-party software
+Проверяем: git --version
+
+2. Установка Python
+--------------------------------------------------------------
+Скачиваем Python 3.11+ : https://www.python.org/downloads/windows/
+Важно: поставить галку Add Python to PATH
+Проверяем:
+python --version
+pip --version
+
+3. Установка зависимостей
+--------------------------------------------------------------
+python -m venv venv
+venv\Scripts\activate
+
+pip install --upgrade pip
+pip install telethon python-dotenv gtts google-generativeai colorama
+
+Возможные ошибки:
+─────────────────────────────────────────────
+pip not recognized             → Python не в PATH, переустановить с Add to PATH
+Ошибка компиляции gTTS         → pip install --upgrade setuptools wheel
+─────────────────────────────────────────────
+
+4. Запуск бота
+--------------------------------------------------------------
+python bot.py
+Если Telethon ругается на SSL → pip install pyopenssl
+
+==============================================================
+
+3️⃣ Android (Termux)
+--------------------------------------------------------------
+1. Установка Termux
+--------------------------------------------------------------
+Скачиваем Termux: https://f-droid.org/packages/com.termux/
+Открываем терминал
+
+2. Установка Git и Python
+--------------------------------------------------------------
+pkg update && pkg upgrade -y
+pkg install git -y
+pkg install python -y
+
+Проверяем:
+git --version
+python --version
+pip --version
+
+3. Установка зависимостей
+--------------------------------------------------------------
+pip install --upgrade pip
+pip install telethon python-dotenv gtts google-generativeai colorama
+
+Возможные ошибки:
+─────────────────────────────────────────────
+pip install wheel failed      → pkg install clang make libffi-dev
+Ошибка gTTS                   → pip install --upgrade setuptools
+─────────────────────────────────────────────
+
+4. Запуск бота
+--------------------------------------------------------------
+python bot.py
+
+==============================================================
+
+4️⃣ Частые ошибки и решения
+--------------------------------------------------------------
+Ошибка                         | Причина                       | Решение
+─────────────────────────────────────────────────────────────────────────────
+ModuleNotFoundError             | Библиотека не установлена      | pip install <название>
+Permission denied               | Нет прав на выполнение файла   | chmod +x bot.py или запуск от sudo
+pip not recognized               | Python не в PATH               | Установить Python с галкой Add to PATH
+SSL error                        | Не хватает библиотек           | pip install pyopenssl
+AI не отвечает                    | Превышен лимит ключа          | Использовать свой ключ Gemini в .env
+gTTS error                        | Не хватает компиляторов       | macOS: brew install gcc
+                                  |                               | Windows/Termux: pkg install clang make
+─────────────────────────────────────────────
+
+💡 Совет для всех платформ:
+--------------------------------------------------------------
+- Создавайте виртуальное окружение (venv) — проще управлять библиотеками
+- Проверяйте версию Python ≥ 3.9
+- Всегда обновляйте pip перед установкой библиотек:
+pip install --upgrade pip setuptools wheel
+
+==============================================================
