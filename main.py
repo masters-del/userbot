@@ -1,166 +1,252 @@
-import os, asyncio, random, sys, io
-from telethon import TelegramClient, events, functions, types, errors
-from telethon.tl.functions.channels import JoinChannelRequest
-from telethon.errors import UserAlreadyParticipantError, FloodWaitError
+import os
+import sys
+import time
+import asyncio
+import random
 from dotenv import load_dotenv
+from telethon import TelegramClient, events
 from gtts import gTTS
+from colorama import Fore, Style, init
 import google.generativeai as genai
-from colorama import init, Fore, Style
-from concurrent.futures import ThreadPoolExecutor
 
+# --- Инициализация ---
 init(autoreset=True)
-
-# Очередь задач и потоки для ИИ
-task_queue = asyncio.Queue()
-_executor = ThreadPoolExecutor(max_workers=5)
-me = None
-
-# Твой ключ Gemini (вшит)
-BUILT_IN_AI_KEY = "AIzaSyD2MnB0xP7gslNIeHalUEW9DAm1xNcHKKc"
-
-def setup_env():
-    if not os.path.exists('.env'):
-        api_id = input("Введите API_ID: ").strip()
-        api_hash = input("Введите API_HASH: ").strip()
-        with open('.env', 'w', encoding='utf-8') as f:
-            f.write(f"API_ID={api_id}\nAPI_HASH={api_hash}\n")
-
-setup_env()
 load_dotenv()
 
-api_id, api_hash = os.getenv("API_ID"), os.getenv("API_HASH")
-client = TelegramClient('stupid_session', int(api_id), api_hash)
-genai.configure(api_key=BUILT_IN_AI_KEY)
-ai_model = genai.GenerativeModel('gemini-1.5-flash')
+API_ID = os.getenv("API_ID")
+API_HASH = os.getenv("API_HASH")
 
-class State:
-    shavka = False
-    ai_help = False
-    afk = False
-    afk_reason = ""
+# --- Настройка Gemini AI ---
+GEMINI_KEY = os.getenv("GEMINI_KEY") or "AIzaSyD2MnB0xP7gslNIeHalUEW9DAm1xNcHKKc"
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+    model = genai.GenerativeModel('gemini-pro')
+    print(Fore.CYAN + "Gemini AI настроен успешно!" + Style.RESET_ALL)
+else:
+    model = None
+    print(Fore.YELLOW + "⚠️ GEMINI_KEY не найден, команды .ai и автоответчик работать не будут" + Style.RESET_ALL)
 
-# --- SAFE SEND ---
-async def safe_send(entity, message):
-    for _ in range(5): 
-        try:
-            await client.send_message(entity, message)
-            await asyncio.sleep(random.uniform(1.5, 3.5))
-            return True
-        except FloodWaitError as f:
-            await asyncio.sleep(f.seconds + 2)
-        except Exception: return False
-    return False
+# --- Инициализация Telethon ---
+client = TelegramClient('stupid_session', API_ID, API_HASH)
 
-# --- WORKER ---
-async def worker():
-    while True:
-        task = await task_queue.get()
-        try: await task()
-        except Exception: pass
-        await asyncio.sleep(random.uniform(2, 5))
-        task_queue.task_done()
+# --- Баннер ---
+banner = f"""
+{Fore.MAGENTA}
+╔═════════════════════════════════════════════╗
+║      🧬 STUPID USERBOT v9.3 ELITE          ║
+╠═════════════════════════════════════════════╣
+║  Бот успешно запущен!                       ║
+║  Напиши .help в Telegram для команд         ║
+║                                             ║
+║  ⚠️ ВНИМАНИЕ: Мы не несем ответственности ║
+║      за использование бота                  ║
+╚═════════════════════════════════════════════╝
+{Style.RESET_ALL}
+"""
 
-# ========================================================
-# [ ❤️ ЛЮБОВНЫЙ БЛОК ]
-# ========================================================
+print(Fore.MAGENTA + "Запуск STUPID USERBOT v9.3", end="")
+for _ in range(3):
+    print(".", end="", flush=True)
+    time.sleep(0.3)
+print(Style.RESET_ALL)
+print(banner)
 
-@client.on(events.NewMessage(pattern=r'\.сердце', outgoing=True))
-async def cmd_heart_anim(e):
-    # Анимация пульсирующего сердца
-    hearts = ["❤️", "💖", "💗", "💓", "💝", "💞", "💟", "❤️"]
-    for h in hearts:
-        await e.edit(h)
-        await asyncio.sleep(0.5)
-    await e.edit("❤️ **Люблю тебя до луны и обратно!** ❤️")
+# --- Глобальные переменные ---
+AUTO_REPLY_ENABLED = True
+AFK_MESSAGE = None
+AUTO_REPLY_INTRO = True
 
-@client.on(events.NewMessage(pattern=r'\.love', outgoing=True))
-async def cmd_love_text(e):
-    # Красивая анимация текста
-    msg = "Я тебя люблю"
-    out = ""
-    for char in msg:
-        out += char
-        await e.edit(f"✨ {out} ✨")
+LOVE_EMOJIS = ["❤️","💛","💚","💙","💜","🖤","💘","💖","💌","🌹","💐"]
+FLIRT_MESSAGES = [
+    "💖 Ты выглядишь потрясающе сегодня!",
+    "💌 Каждое твоё сообщение радует меня!",
+    "🌹 Твои глаза сияют как звёзды!",
+    "💞 Ты моя радость этого дня!",
+    "💘 С тобой всегда весело и уютно!"
+]
+
+# --- Вспомогательные функции ---
+async def print_animated(event, message):
+    current = ""
+    for char in message:
+        current += char
+        await event.edit(current + random.choice(LOVE_EMOJIS))
+        await asyncio.sleep(0.02 + random.random()*0.03)
+    await event.edit(current)
+
+# --- Команды ---
+
+# 1. Помощь
+@client.on(events.NewMessage(pattern=r'\.help', outgoing=True))
+async def help_cmd(event):
+    help_text = (
+        "🧬 STUPID USERBOT v9.3 Elite\n\n"
+        "✨ Команды:\n"
+        "• .ping — Пинг\n"
+        "• .type [текст] — Эффект печати\n"
+        "• .ai [вопрос] — Спросить AI\n"
+        "• .tts [текст] — Голосовое сообщение\n"
+        "• .heart — Анимация любви\n"
+        "• .restart — Перезагрузка\n"
+        "• .afk [текст] — Установить AFK статус\n"
+        "• .autoreply on/off — Включить/выключить автоответчик\n"
+        "• .love [имя] — Любовное сообщение\n"
+        "• .hug [имя] — Объятия\n"
+        "• .kiss [имя] — Поцелуй\n"
+        "• .flowers [имя] — Виртуальные цветы\n"
+        "• .flirt — Случайный комплимент\n"
+        "⚠️ Не несем ответственности за использование\n"
+    )
+    current = ""
+    for char in help_text:
+        current += char
+        await event.edit(current + "▒")
+        await asyncio.sleep(0.02 + random.random()*0.03)
+    await event.edit(current)
+
+# 2. Пинг
+@client.on(events.NewMessage(pattern=r'\.ping', outgoing=True))
+async def ping(event):
+    start = time.time()
+    await event.edit("<b>🏓 Понг...</b>", parse_mode='html')
+    end = time.time()
+    await event.edit(f"<b>🏓 Понг! ({(end - start):.3f} сек)</b>", parse_mode='html')
+
+# 3. Печатная машинка
+@client.on(events.NewMessage(pattern=r'\.type (.*)', outgoing=True))
+async def typewriter(event):
+    text = event.pattern_match.group(1)
+    current = ""
+    for char in text:
+        current += char
+        await event.edit(current + "▒")
+        await asyncio.sleep(0.05)
+    await event.edit(current)
+
+# 4. AI запрос
+@client.on(events.NewMessage(pattern=r'\.ai (.*)', outgoing=True))
+async def ai_query(event):
+    if not model:
+        return await event.edit("❌ Ключ AI не найден, команда .ai не работает")
+    prompt = event.pattern_match.group(1)
+    await event.edit("🤖 <i>Думаю...</i>", parse_mode='html')
+    try:
+        response = model.generate_content(prompt)
+        await event.edit(f"<b>🤖 Ответ AI:</b>\n\n{response.text}", parse_mode='html')
+    except Exception as e:
+        await event.edit(f"❌ Ошибка AI: {e}")
+
+# 5. TTS
+@client.on(events.NewMessage(pattern=r'\.tts (.*)', outgoing=True))
+async def tts(event):
+    text = event.pattern_match.group(1)
+    await event.edit("🎙 <i>Записываю голос...</i>", parse_mode='html')
+    tts_obj = gTTS(text=text, lang='ru')
+    tts_obj.save("voice.mp3")
+    await client.send_file(event.chat_id, "voice.mp3", voice_note=True)
+    await event.delete()
+    os.remove("voice.mp3")
+
+# 6. Сердца
+@client.on(events.NewMessage(pattern=r'\.heart', outgoing=True))
+async def hearts(event):
+    for h in LOVE_EMOJIS:
+        await event.edit(h)
         await asyncio.sleep(0.3)
-    await e.edit(f"❤️ **{msg}** ❤️")
 
-@client.on(events.NewMessage(pattern=r'\.признание', outgoing=True))
-async def cmd_confess(e):
-    # ИИ пишет глубокое и красивое признание
-    await e.edit("💌 **Пишу самое красивое признание...**")
-    try:
-        loop = asyncio.get_event_loop()
-        res = await loop.run_in_executor(_executor, lambda: ai_model.generate_content("Напиши очень трогательное, глубокое и короткое признание в любви для девушки. Используй метафоры про космос или океан. Без пошлости."))
-        if res and res.text:
-            await e.edit(f"📜 **Послание для тебя:**\n\n{res.text.strip()}\n\n❤️✨")
-    except:
-        await e.edit("❤️ Ты — мой весь мир.")
+# 7. Перезапуск
+@client.on(events.NewMessage(pattern=r'\.restart', outgoing=True))
+async def restart(event):
+    await event.edit("🔄 <b>Перезапуск системы...</b>", parse_mode='html')
+    os.execl(sys.executable, sys.executable, *sys.argv)
 
-# ========================================================
-# [ 📜 ОСТАЛЬНЫЕ КОМАНДЫ (v9.2 БАЗА) ]
-# ========================================================
+# 8. AFK
+@client.on(events.NewMessage(pattern=r'\.afk (.+)', outgoing=True))
+async def set_afk(event):
+    global AFK_MESSAGE
+    AFK_MESSAGE = event.pattern_match.group(1)
+    await event.edit(f"💤 AFK статус установлен:\n\n{AFK_MESSAGE}")
 
-@client.on(events.NewMessage(pattern=r'\.ai (.+)', outgoing=True))
-async def cmd_ai(e):
-    await e.edit("🤔 **ИИ анализирует...**")
-    try:
-        loop = asyncio.get_event_loop()
-        res = await loop.run_in_executor(_executor, lambda: ai_model.generate_content(e.pattern_match.group(1)))
-        if res and res.text: await e.edit(f"🤖 **AI:**\n\n{res.text.strip()[:4000]}")
-    except: await e.edit("❌ Ошибка.")
+# 9. Auto-reply
+@client.on(events.NewMessage(pattern=r'\.autoreply (on|off)', outgoing=True))
+async def toggle_autoreply(event):
+    global AUTO_REPLY_ENABLED
+    status = event.pattern_match.group(1).lower()
+    if status == "on":
+        AUTO_REPLY_ENABLED = True
+        await event.edit("✅ Автоответчик включен")
+    else:
+        AUTO_REPLY_ENABLED = False
+        await event.edit("❌ Автоответчик выключен")
 
-@client.on(events.NewMessage(pattern=r'\.рейд (\d+) (.+)', outgoing=True))
-async def cmd_raid(e):
-    count, text = min(int(e.pattern_match.group(1)), 30), e.pattern_match.group(2)
-    await e.delete()
-    async def raid_task():
-        for _ in range(count): await safe_send(e.chat_id, text)
-    await task_queue.put(raid_task)
+# 10. Автоответчик с приветствием + AI
+@client.on(events.NewMessage(incoming=True))
+async def auto_reply(event):
+    global AUTO_REPLY_ENABLED, AFK_MESSAGE, AUTO_REPLY_INTRO
+    if event.out or not AUTO_REPLY_ENABLED:
+        return
+    sender = await event.get_sender()
+    user_name = sender.first_name or "Пользователь"
+    text = event.message.message.strip()
+    if len(text) == 0:
+        return
+    if AFK_MESSAGE:
+        await event.respond(f"💤 Я сейчас AFK:\n{AFK_MESSAGE}")
+        return
+    if AUTO_REPLY_INTRO:
+        intro_text = (
+            f"👋 Привет {user_name}! Сейчас я занят, но вам поможет мой AI-агент!\n"
+            "❗ Пишите только реплаем на мои сообщения вопросы и он даст вам ответ!"
+        )
+        await event.respond(intro_text)
+        AUTO_REPLY_INTRO = False
+        return
+    if event.is_reply:
+        replied = await event.get_reply_message()
+        if replied.from_id == (await client.get_me()).id:
+            if model:
+                await event.respond("🤖 <i>Думаю...</i>", parse_mode='html')
+                try:
+                    response = model.generate_content(text)
+                    reply_text = ""
+                    for char in response.text:
+                        reply_text += char
+                        await event.reply(reply_text + "▒")
+                        await asyncio.sleep(0.01 + random.random()*0.02)
+                except Exception as e:
+                    await event.respond(f"❌ Ошибка AI: {e}")
 
-@client.on(events.NewMessage(pattern=r'\.рассылка (.+)', outgoing=True))
-async def cmd_broadcast(e):
-    msg = e.pattern_match.group(1)
-    try:
-        async with client.conversation("me", timeout=60) as conv:
-            await conv.send_message("📝 **Ссылки:**")
-            r = await conv.get_response()
-            links = [l.strip() for l in r.text.split('\n') if l.strip()]
-    except: return await e.edit("❌ Отмена.")
-    await e.edit("🚀 **В очереди...**")
-    async def broadcast_task():
-        for link in links:
-            try:
-                target = link.replace("https://t.me/", "").replace("@", "").split('/')[0]
-                try: await client(JoinChannelRequest(target))
-                except UserAlreadyParticipantError: pass
-                except: continue
-                await asyncio.sleep(random.uniform(15, 30))
-                await safe_send(target, msg)
-            except: continue
-    await task_queue.put(broadcast_task)
+# --- Любовный модуль ---
+@client.on(events.NewMessage(pattern=r'\.love (.+)', outgoing=True))
+async def love_msg(event):
+    name = event.pattern_match.group(1)
+    message = f"💖 {name}, ты особенная! 💖\nМой AI-агент готов поддержать переписку! 😘"
+    await print_animated(event, message)
 
-@client.on(events.NewMessage(pattern=r'\.пинг', outgoing=True))
-async def cmd_p(e): await e.edit("`v9.3 LOVELY ACTIVE ❤️`")
+@client.on(events.NewMessage(pattern=r'\.hug (.+)', outgoing=True))
+async def hug(event):
+    name = event.pattern_match.group(1)
+    message = f"🤗 Обнимаю тебя, {name}! 💞"
+    await print_animated(event, message)
 
-@client.on(events.NewMessage(pattern=r'\.шавка', outgoing=True))
-async def cmd_sh(e):
-    State.shavka = not State.shavka
-    await e.edit(f"🐶 Шавка: {'✅' if State.shavka else '❌'}")
+@client.on(events.NewMessage(pattern=r'\.kiss (.+)', outgoing=True))
+async def kiss(event):
+    name = event.pattern_match.group(1)
+    message = f"😘 Целую тебя, {name}! 💋💖"
+    await print_animated(event, message)
 
-@client.on(events.NewMessage(outgoing=True))
-async def sh_l(e):
-    if State.shavka and e.text and not e.text.startswith('.'):
-        await e.edit(f"{e.text} ~ня", parse_mode=None)
+@client.on(events.NewMessage(pattern=r'\.flowers (.+)', outgoing=True))
+async def flowers(event):
+    name = event.pattern_match.group(1)
+    message = f"🌹 {name}, получай виртуальные цветы! 🌺💐"
+    await print_animated(event, message)
 
-async def main():
-    global me
-    try:
-        await client.start()
-        me = await client.get_me()
-        asyncio.create_task(worker())
-        print(Fore.MAGENTA + f"[+] v9.3 Lovely запущен! Любимая, я в сети.")
-        await client.run_until_disconnected()
-    except Exception as ex: print(ex)
+@client.on(events.NewMessage(pattern=r'\.flirt', outgoing=True))
+async def flirt(event):
+    message = random.choice(FLIRT_MESSAGES)
+    await print_animated(event, message)
 
-if __name__ == '__main__':
-    client.loop.run_until_complete(main())
+# --- Старт ---
+client.start()
+print(Fore.GREEN + "Бот запущен! Жди команд в Telegram." + Style.RESET_ALL)
+client.run_until_disconnected()
