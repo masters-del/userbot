@@ -7,14 +7,22 @@ from telethon import TelegramClient, events
 from gtts import gTTS
 from colorama import Fore, Style, init
 import google.generativeai as genai
+from dotenv import load_dotenv
 
 init(autoreset=True)
 
-# ===== CONFIG =====
+# ===== ЗАГРУЗКА .ENV =====
+load_dotenv()
+
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 
-# ===== GEMINI (ВШИТЫЙ КЛЮЧ) =====
+# Проверка
+if not API_ID or not API_HASH:
+    print("❌ ERROR: API_ID или API_HASH пустые. Вставьте значения в .env или прямо в код.")
+    sys.exit(1)
+
+# ===== GEMINI (ключ вшит) =====
 GEMINI_KEY = "AIzaSyD2MnB0xP7gslNIeHalUEW9DAm1xNcHKKc"
 
 try:
@@ -25,7 +33,7 @@ except Exception as e:
     print(f"❌ Gemini error: {e}")
     model = None
 
-client = TelegramClient('stupid_session', API_ID, API_HASH)
+client = TelegramClient('stupid_session', int(API_ID), API_HASH)
 
 # ===== STATE =====
 AFK = False
