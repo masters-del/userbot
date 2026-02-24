@@ -7,31 +7,26 @@ from telethon import TelegramClient, events
 from gtts import gTTS
 from colorama import Fore, Style, init
 import google.generativeai as genai
-from dotenv import load_dotenv
 
 init(autoreset=True)
 
-# ===== ЗАГРУЗКА .ENV =====
-load_dotenv()
+# ===== CONFIG =====
+API_ID = 12345678          # Вставь свой API_ID
+API_HASH = "abcdef123456"  # Вставь свой API_HASH
+GEMINI_KEY = "AIzaSyD2MnB0xP7gslNIeHalUEW9DAm1xNcHKKc"  # Вшитый ключ
 
-API_ID = os.getenv("API_ID")
-API_HASH = os.getenv("API_HASH")
-
-# Проверка
-if not API_ID or not API_HASH:
-    print("❌ ERROR: API_ID или API_HASH пустые. Вставьте значения в .env или прямо в код.")
-    sys.exit(1)
-
-# ===== GEMINI (ключ вшит) =====
-GEMINI_KEY = "AIzaSyD2MnB0xP7gslNIeHalUEW9DAm1xNcHKKc"
-
-try:
-    genai.configure(api_key=GEMINI_KEY)
-    model = genai.GenerativeModel("gemini-pro")
-    print("🤖 Gemini подключен")
-except Exception as e:
-    print(f"❌ Gemini error: {e}")
-    model = None
+# ===== Настройка Gemini =====
+model = None
+if GEMINI_KEY:
+    try:
+        genai.configure(api_key=GEMINI_KEY)
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        print("🤖 Gemini AI подключен")
+    except Exception as e:
+        print(f"❌ Ошибка Gemini: {e}")
+        model = None
+else:
+    print("⚠️ GEMINI_KEY не найден. AI недоступен")
 
 client = TelegramClient('stupid_session', int(API_ID), API_HASH)
 
@@ -57,21 +52,36 @@ print(f"""{Fore.MAGENTA}
 
 {Style.RESET_ALL}""")
 
-# ===== HELP =====
+# ===== HELP с меню и подписями =====
 @client.on(events.NewMessage(pattern=r'\.help', outgoing=True))
 async def help_cmd(event):
-    text = (
-        "<b>🧬 STUPID USERBOT</b>\n\n"
-        "• .ping\n"
-        "• .type текст\n"
-        "• .ai вопрос\n"
-        "• .tts текст\n"
-        "• .restart\n\n"
-        "💤 .afk текст / off\n"
-        "🤖 .autoreply on/off\n\n"
-        "💖 .love / .hug / .kiss / .flowers / .flirt"
+    help_text = (
+        "<b>🧬 STUPID USERBOT v9.3 ELITE</b>\n"
+        "╔══════════════════════════╗\n"
+        "║         Меню Команд      ║\n"
+        "╚══════════════════════════╝\n\n"
+        "✨ <b>Основные:</b>\n"
+        "• <code>.ping</code> — Проверка пинга и задержки\n"
+        "• <code>.type текст</code> — Эффект печатной машинки\n"
+        "• <code>.ai вопрос</code> — Задать вопрос AI\n"
+        "• <code>.tts текст</code> — Преобразовать текст в голосовое сообщение\n"
+        "• <code>.restart</code> — Перезагрузка бота\n\n"
+        "💤 <b>AFK:</b>\n"
+        "• <code>.afk текст</code> — Включить AFK с сообщением\n"
+        "• <code>.afk off</code> — Выключить AFK\n\n"
+        "🤖 <b>Автоответ:</b>\n"
+        "• <code>.autoreply on</code> — Включить автоответчик AI\n"
+        "• <code>.autoreply off</code> — Выключить автоответчик AI\n"
+        "<i>Автоответ реагирует только на реплаи вашим сообщениям в личке</i>\n\n"
+        "💖 <b>Любовные команды:</b>\n"
+        "• <code>.love имя</code> — Отправить любовь выбранному человеку\n"
+        "• <code>.hug имя</code> — Обнять кого-то 🤗\n"
+        "• <code>.kiss имя</code> — Поцеловать кого-то 😘\n"
+        "• <code>.flowers имя</code> — Отправить цветы 🌹\n"
+        "• <code>.flirt</code> — Случайный флирт-сообщение 😏\n\n"
+        "<i>С любовью, ваш STUPID USERBOT 💜</i>"
     )
-    await event.edit(text, parse_mode='html')
+    await event.edit(help_text, parse_mode='html')
 
 # ===== PING =====
 @client.on(events.NewMessage(pattern=r'\.ping', outgoing=True))
@@ -97,11 +107,9 @@ async def type_cmd(event):
 @client.on(events.NewMessage(pattern=r'\.ai (.*)', outgoing=True))
 async def ai(event):
     if not model:
-        return await event.edit("❌ AI недоступен")
-
+        return await event.edit("❌ AI временно недоступен")
     q = event.pattern_match.group(1)
     await event.edit("🤖 Думаю...")
-
     try:
         r = model.generate_content(q)
         await event.edit(r.text[:4000])
@@ -123,11 +131,9 @@ async def tts(event):
 async def afk(event):
     global AFK, AFK_TEXT
     arg = event.pattern_match.group(1)
-
     if arg == "off":
         AFK = False
         return await event.edit("✅ AFK OFF")
-
     AFK = True
     AFK_TEXT = arg or "Я отошел"
     await event.edit(f"💤 AFK:\n{AFK_TEXT}")
@@ -139,21 +145,26 @@ async def ar(event):
     AUTO_REPLY = event.pattern_match.group(1) == "on"
     await event.edit(f"🤖 AUTO: {AUTO_REPLY}")
 
-# ===== INCOMING =====
+# ===== INCOMING (исправлено для автоответа) =====
 @client.on(events.NewMessage(incoming=True))
 async def incoming(event):
     global AFK, AUTO_REPLY
-
     sender = await event.get_sender()
     name = sender.first_name
 
-    if AFK:
+    # Игнорируем команды бота, чтобы автоответ не срабатывал
+    if event.raw_text.startswith((".", "/", "!" )):
+        return
+
+    # AFK сообщение
+    if AFK and not event.out:
         await event.reply(
-            f'Привет "{name}" сейчас я занят но вам поможет мой AI-агент!\n'
-            f'Пишите реплаем.'
+            f'Привет "{name}" сейчас я занят, но вам поможет мой AI-агент!\n'
+            f'Пишите реплаем на мои сообщения.'
         )
 
-    if AUTO_REPLY and event.is_reply and model:
+    # AUTO_REPLY только на реплаи вашим сообщениям и личным чатам
+    if AUTO_REPLY and event.is_reply and event.is_private and model:
         try:
             r = model.generate_content(event.raw_text)
             await event.reply(r.text[:1000])
